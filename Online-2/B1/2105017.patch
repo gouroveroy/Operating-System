@@ -1,0 +1,310 @@
+diff --git a/Makefile b/Makefile
+index f8c820e..789a702 100644
+--- a/Makefile
++++ b/Makefile
+@@ -32,7 +32,7 @@ OBJS = \
+ 
+ # riscv64-unknown-elf- or riscv64-linux-gnu-
+ # perhaps in /opt/riscv/bin
+-#TOOLPREFIX = 
++#TOOLPREFIX =
+ 
+ # Try to infer the correct TOOLPREFIX if not set
+ ifndef TOOLPREFIX
+@@ -81,7 +81,7 @@ endif
+ LDFLAGS = -z max-page-size=4096
+ 
+ $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
+-	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS) 
++	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS)
+ 	$(OBJDUMP) -S $K/kernel > $K/kernel.asm
+ 	$(OBJDUMP) -t $K/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $K/kernel.sym
+ 
+@@ -139,13 +139,15 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_seed\
++	$U/_sample\
+ 
+ fs.img: mkfs/mkfs README $(UPROGS)
+ 	mkfs/mkfs fs.img README $(UPROGS)
+ 
+ -include kernel/*.d user/*.d
+ 
+-clean: 
++clean:
+ 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
+ 	*/*.o */*.d */*.asm */*.sym \
+ 	$U/initcode $U/initcode.out $K/kernel fs.img \
+diff --git a/kernel/array.h b/kernel/array.h
+new file mode 100644
+index 0000000..a993074
+--- /dev/null
++++ b/kernel/array.h
+@@ -0,0 +1,6 @@
++struct array
++{
++  int len;          // total length of array
++  int array[15];    // array elements (input)
++  int selected[15]; // randomly selected array elements
++};
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index ed65409..7c87ed1 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -101,32 +101,37 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
++extern uint64 sys_setSeed(void);
++extern uint64 sys_sample(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+ static uint64 (*syscalls[])(void) = {
+-[SYS_fork]    sys_fork,
+-[SYS_exit]    sys_exit,
+-[SYS_wait]    sys_wait,
+-[SYS_pipe]    sys_pipe,
+-[SYS_read]    sys_read,
+-[SYS_kill]    sys_kill,
+-[SYS_exec]    sys_exec,
+-[SYS_fstat]   sys_fstat,
+-[SYS_chdir]   sys_chdir,
+-[SYS_dup]     sys_dup,
+-[SYS_getpid]  sys_getpid,
+-[SYS_sbrk]    sys_sbrk,
+-[SYS_sleep]   sys_sleep,
+-[SYS_uptime]  sys_uptime,
+-[SYS_open]    sys_open,
+-[SYS_write]   sys_write,
+-[SYS_mknod]   sys_mknod,
+-[SYS_unlink]  sys_unlink,
+-[SYS_link]    sys_link,
+-[SYS_mkdir]   sys_mkdir,
+-[SYS_close]   sys_close,
+-};
++    [SYS_fork] sys_fork,
++    [SYS_exit] sys_exit,
++    [SYS_wait] sys_wait,
++    [SYS_pipe] sys_pipe,
++    [SYS_read] sys_read,
++    [SYS_kill] sys_kill,
++    [SYS_exec] sys_exec,
++    [SYS_fstat] sys_fstat,
++    [SYS_chdir] sys_chdir,
++    [SYS_dup] sys_dup,
++    [SYS_getpid] sys_getpid,
++    [SYS_sbrk] sys_sbrk,
++    [SYS_sleep] sys_sleep,
++    [SYS_uptime] sys_uptime,
++    [SYS_open] sys_open,
++    [SYS_write] sys_write,
++    [SYS_mknod] sys_mknod,
++    [SYS_unlink] sys_unlink,
++    [SYS_link] sys_link,
++    [SYS_mkdir] sys_mkdir,
++    [SYS_close] sys_close,
++    [SYS_setSeed] sys_setSeed,
++    [SYS_sample] sys_sample,
++}
++;
+ 
+ void
+ syscall(void)
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..b75a712 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,5 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_setSeed 22
++#define SYS_sample 23
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 3b4d5bd..d741842 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -5,6 +5,9 @@
+ #include "memlayout.h"
+ #include "spinlock.h"
+ #include "proc.h"
++#include "array.h"
++
++int seed;
+ 
+ uint64
+ sys_exit(void)
+@@ -12,7 +15,7 @@ sys_exit(void)
+   int n;
+   argint(0, &n);
+   exit(n);
+-  return 0;  // not reached
++  return 0; // not reached
+ }
+ 
+ uint64
+@@ -43,7 +46,7 @@ sys_sbrk(void)
+ 
+   argint(0, &n);
+   addr = myproc()->sz;
+-  if(growproc(n) < 0)
++  if (growproc(n) < 0)
+     return -1;
+   return addr;
+ }
+@@ -55,12 +58,14 @@ sys_sleep(void)
+   uint ticks0;
+ 
+   argint(0, &n);
+-  if(n < 0)
++  if (n < 0)
+     n = 0;
+   acquire(&tickslock);
+   ticks0 = ticks;
+-  while(ticks - ticks0 < n){
+-    if(killed(myproc())){
++  while (ticks - ticks0 < n)
++  {
++    if (killed(myproc()))
++    {
+       release(&tickslock);
+       return -1;
+     }
+@@ -91,3 +96,41 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++
++uint64
++sys_setSeed(void)
++{
++  int s;
++  argint(0, &s);
++  seed = s;
++  return 0;
++}
++
++uint64
++sys_sample(void)
++{
++  uint64 user_arr_ptr;
++  struct array sel;
++  int k;
++  argaddr(0, &user_arr_ptr);
++  argint(1, &k);
++
++  if (copyin(myproc()->pagetable, (char *)&sel, user_arr_ptr, sizeof(struct array)) < 0)
++  {
++    return -1;
++  }
++
++  for (int i = 0; i < k; i++)
++  {
++    seed++;
++    int index = seed % sel.len;
++    sel.selected[i] = sel.array[index];
++  }
++  seed--;
++
++  if (copyout(myproc()->pagetable, user_arr_ptr, (char *)&sel, sizeof(struct array)) < 0)
++  {
++    return -1;
++  }
++  return 0;
++}
+diff --git a/user/sample.c b/user/sample.c
+new file mode 100644
+index 0000000..15381cb
+--- /dev/null
++++ b/user/sample.c
+@@ -0,0 +1,31 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++#include "kernel/array.h"
++
++int main(int argc, char *argv[])
++{
++  struct array a;
++  int k = atoi(argv[1]);
++  int len = atoi(argv[2]);
++  a.len = len;
++  for (int i = 0; i < len; i++)
++  {
++    a.array[i] = atoi(argv[3 + i]);
++  }
++  sample(&a, k);
++  printf("Sampled elements are [");
++  for (int i = 0; i < k; i++)
++  {
++    if (i == k - 1)
++    {
++      printf("%d", a.selected[i]);
++    }
++    else
++    {
++      printf("%d, ", a.selected[i]);
++    }
++  }
++  printf("]\n");
++  exit(0);
++}
+diff --git a/user/seed.c b/user/seed.c
+new file mode 100644
+index 0000000..409d4ad
+--- /dev/null
++++ b/user/seed.c
+@@ -0,0 +1,12 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[])
++{
++  int seed = atoi(argv[1]);
++
++  setSeed(seed);
++  printf("The seed has been set to %d\n", seed);
++  exit(0);
++}
+diff --git a/user/user.h b/user/user.h
+index f16fe27..9cc435a 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -1,4 +1,5 @@
+ struct stat;
++struct array;
+ 
+ // system calls
+ int fork(void);
+@@ -22,6 +23,8 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int setSeed(int);
++int sample(struct array*, int);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..24f4f58 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -14,7 +14,7 @@ sub entry {
+     print " ecall\n";
+     print " ret\n";
+ }
+-	
++
+ entry("fork");
+ entry("exit");
+ entry("wait");
+@@ -36,3 +36,5 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("setSeed");
++entry("sample");

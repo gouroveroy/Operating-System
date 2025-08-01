@@ -1,0 +1,237 @@
+diff --git a/Makefile b/Makefile
+index f8c820e..577402e 100644
+--- a/Makefile
++++ b/Makefile
+@@ -32,7 +32,7 @@ OBJS = \
+ 
+ # riscv64-unknown-elf- or riscv64-linux-gnu-
+ # perhaps in /opt/riscv/bin
+-#TOOLPREFIX = 
++#TOOLPREFIX =
+ 
+ # Try to infer the correct TOOLPREFIX if not set
+ ifndef TOOLPREFIX
+@@ -81,7 +81,7 @@ endif
+ LDFLAGS = -z max-page-size=4096
+ 
+ $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
+-	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS) 
++	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS)
+ 	$(OBJDUMP) -S $K/kernel > $K/kernel.asm
+ 	$(OBJDUMP) -t $K/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $K/kernel.sym
+ 
+@@ -139,13 +139,15 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_seed\
++	$U/_next\
+ 
+ fs.img: mkfs/mkfs README $(UPROGS)
+ 	mkfs/mkfs fs.img README $(UPROGS)
+ 
+ -include kernel/*.d user/*.d
+ 
+-clean: 
++clean:
+ 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
+ 	*/*.o */*.d */*.asm */*.sym \
+ 	$U/initcode $U/initcode.out $K/kernel fs.img \
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index ed65409..0ec5277 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -101,31 +101,35 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
++extern uint64 sys_setSeed(void);
++extern uint64 sys_getRandomNumbers(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+ static uint64 (*syscalls[])(void) = {
+-[SYS_fork]    sys_fork,
+-[SYS_exit]    sys_exit,
+-[SYS_wait]    sys_wait,
+-[SYS_pipe]    sys_pipe,
+-[SYS_read]    sys_read,
+-[SYS_kill]    sys_kill,
+-[SYS_exec]    sys_exec,
+-[SYS_fstat]   sys_fstat,
+-[SYS_chdir]   sys_chdir,
+-[SYS_dup]     sys_dup,
+-[SYS_getpid]  sys_getpid,
+-[SYS_sbrk]    sys_sbrk,
+-[SYS_sleep]   sys_sleep,
+-[SYS_uptime]  sys_uptime,
+-[SYS_open]    sys_open,
+-[SYS_write]   sys_write,
+-[SYS_mknod]   sys_mknod,
+-[SYS_unlink]  sys_unlink,
+-[SYS_link]    sys_link,
+-[SYS_mkdir]   sys_mkdir,
+-[SYS_close]   sys_close,
++    [SYS_fork] sys_fork,
++    [SYS_exit] sys_exit,
++    [SYS_wait] sys_wait,
++    [SYS_pipe] sys_pipe,
++    [SYS_read] sys_read,
++    [SYS_kill] sys_kill,
++    [SYS_exec] sys_exec,
++    [SYS_fstat] sys_fstat,
++    [SYS_chdir] sys_chdir,
++    [SYS_dup] sys_dup,
++    [SYS_getpid] sys_getpid,
++    [SYS_sbrk] sys_sbrk,
++    [SYS_sleep] sys_sleep,
++    [SYS_uptime] sys_uptime,
++    [SYS_open] sys_open,
++    [SYS_write] sys_write,
++    [SYS_mknod] sys_mknod,
++    [SYS_unlink] sys_unlink,
++    [SYS_link] sys_link,
++    [SYS_mkdir] sys_mkdir,
++    [SYS_close] sys_close,
++    [SYS_setSeed] sys_setSeed,
++    [SYS_getRandomNumbers] sys_getRandomNumbers,
+ };
+ 
+ void
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..4f48ab1 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,5 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_setSeed 22
++#define SYS_getRandomNumbers 23
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 3b4d5bd..34701be 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -6,6 +6,8 @@
+ #include "spinlock.h"
+ #include "proc.h"
+ 
++int seed;
++
+ uint64
+ sys_exit(void)
+ {
+@@ -91,3 +93,34 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++
++uint64
++sys_setSeed(void)
++{
++  int s;
++  argint(0, &s);
++  seed = s;
++  return 0;
++}
++
++uint64
++sys_getRandomNumbers(void)
++{
++  int n;
++  uint64 user_space;
++  argint(0, &n);
++  argaddr(1, &user_space);
++
++  int random[15];
++  for (int i = 0; i < n; i++)
++  {
++    seed++;
++    random[i] = seed;
++  }
++
++  if (copyout(myproc()->pagetable, user_space, (char *)&random, 15) < 0)
++  {
++    return -1;
++  }
++  return 0;
++}
+diff --git a/user/next.c b/user/next.c
+new file mode 100644
+index 0000000..01e20d2
+--- /dev/null
++++ b/user/next.c
+@@ -0,0 +1,24 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[])
++{
++  int n = atoi(argv[1]);
++  int arr[15];
++  getRandomNumbers(n, arr);
++  printf("Next random numbers are [");
++  for (int i = 0; i < n; i++)
++  {
++    if (i == n - 1)
++    {
++      printf("%d", arr[i]);
++    }
++    else
++    {
++      printf("%d, ", arr[i]);
++    }
++  }
++  printf("]\n");
++  exit(0);
++}
+diff --git a/user/seed.c b/user/seed.c
+new file mode 100644
+index 0000000..f22edf4
+--- /dev/null
++++ b/user/seed.c
+@@ -0,0 +1,11 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[])
++{
++  int seed = atoi(argv[1]);
++  setSeed(seed);
++  printf("The seed has been set to %d\n", seed);
++  exit(0);
++}
+diff --git a/user/user.h b/user/user.h
+index f16fe27..38c756b 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -22,6 +22,8 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int setSeed(int);
++int getRandomNumbers(int, int*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..fffe08f 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -14,7 +14,7 @@ sub entry {
+     print " ecall\n";
+     print " ret\n";
+ }
+-	
++
+ entry("fork");
+ entry("exit");
+ entry("wait");
+@@ -36,3 +36,5 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("setSeed");
++entry("getRandomNumbers");

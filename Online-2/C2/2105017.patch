@@ -1,0 +1,267 @@
+diff --git a/Makefile b/Makefile
+index f8c820e..1220dc8 100644
+--- a/Makefile
++++ b/Makefile
+@@ -32,7 +32,7 @@ OBJS = \
+ 
+ # riscv64-unknown-elf- or riscv64-linux-gnu-
+ # perhaps in /opt/riscv/bin
+-#TOOLPREFIX = 
++#TOOLPREFIX =
+ 
+ # Try to infer the correct TOOLPREFIX if not set
+ ifndef TOOLPREFIX
+@@ -81,7 +81,7 @@ endif
+ LDFLAGS = -z max-page-size=4096
+ 
+ $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
+-	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS) 
++	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS)
+ 	$(OBJDUMP) -S $K/kernel > $K/kernel.asm
+ 	$(OBJDUMP) -t $K/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $K/kernel.sym
+ 
+@@ -139,13 +139,15 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_target\
++	$U/_freq\
+ 
+ fs.img: mkfs/mkfs README $(UPROGS)
+ 	mkfs/mkfs fs.img README $(UPROGS)
+ 
+ -include kernel/*.d user/*.d
+ 
+-clean: 
++clean:
+ 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
+ 	*/*.o */*.d */*.asm */*.sym \
+ 	$U/initcode $U/initcode.out $K/kernel fs.img \
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index ed65409..9739ae0 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -101,32 +101,36 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
++extern uint64 sys_setTargetChar(void);
++extern uint64 sys_countTargetFreq(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+ static uint64 (*syscalls[])(void) = {
+-[SYS_fork]    sys_fork,
+-[SYS_exit]    sys_exit,
+-[SYS_wait]    sys_wait,
+-[SYS_pipe]    sys_pipe,
+-[SYS_read]    sys_read,
+-[SYS_kill]    sys_kill,
+-[SYS_exec]    sys_exec,
+-[SYS_fstat]   sys_fstat,
+-[SYS_chdir]   sys_chdir,
+-[SYS_dup]     sys_dup,
+-[SYS_getpid]  sys_getpid,
+-[SYS_sbrk]    sys_sbrk,
+-[SYS_sleep]   sys_sleep,
+-[SYS_uptime]  sys_uptime,
+-[SYS_open]    sys_open,
+-[SYS_write]   sys_write,
+-[SYS_mknod]   sys_mknod,
+-[SYS_unlink]  sys_unlink,
+-[SYS_link]    sys_link,
+-[SYS_mkdir]   sys_mkdir,
+-[SYS_close]   sys_close,
+-};
++    [SYS_fork] sys_fork,
++    [SYS_exit] sys_exit,
++    [SYS_wait] sys_wait,
++    [SYS_pipe] sys_pipe,
++    [SYS_read] sys_read,
++    [SYS_kill] sys_kill,
++    [SYS_exec] sys_exec,
++    [SYS_fstat] sys_fstat,
++    [SYS_chdir] sys_chdir,
++    [SYS_dup] sys_dup,
++    [SYS_getpid] sys_getpid,
++    [SYS_sbrk] sys_sbrk,
++    [SYS_sleep] sys_sleep,
++    [SYS_uptime] sys_uptime,
++    [SYS_open] sys_open,
++    [SYS_write] sys_write,
++    [SYS_mknod] sys_mknod,
++    [SYS_unlink] sys_unlink,
++    [SYS_link] sys_link,
++    [SYS_mkdir] sys_mkdir,
++    [SYS_close] sys_close,
++    [SYS_setTargetChar] sys_setTargetChar,
++    [SYS_countTargetFreq] sys_countTargetFreq,
++  };
+ 
+ void
+ syscall(void)
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..bae025e 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,5 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_setTargetChar 22
++#define SYS_countTargetFreq 23
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 3b4d5bd..ccbb97d 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -6,13 +6,15 @@
+ #include "spinlock.h"
+ #include "proc.h"
+ 
++unsigned char c;
++
+ uint64
+ sys_exit(void)
+ {
+   int n;
+   argint(0, &n);
+   exit(n);
+-  return 0;  // not reached
++  return 0; // not reached
+ }
+ 
+ uint64
+@@ -43,7 +45,7 @@ sys_sbrk(void)
+ 
+   argint(0, &n);
+   addr = myproc()->sz;
+-  if(growproc(n) < 0)
++  if (growproc(n) < 0)
+     return -1;
+   return addr;
+ }
+@@ -55,12 +57,14 @@ sys_sleep(void)
+   uint ticks0;
+ 
+   argint(0, &n);
+-  if(n < 0)
++  if (n < 0)
+     n = 0;
+   acquire(&tickslock);
+   ticks0 = ticks;
+-  while(ticks - ticks0 < n){
+-    if(killed(myproc())){
++  while (ticks - ticks0 < n)
++  {
++    if (killed(myproc()))
++    {
+       release(&tickslock);
+       return -1;
+     }
+@@ -91,3 +95,34 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++
++uint64
++sys_setTargetChar(void)
++{
++  int ch;
++  argint(0, &ch);
++  c = (unsigned char)ch;
++  return 0;
++}
++
++uint64
++sys_countTargetFreq(void)
++{
++  uint64 buf;
++  char str[128];
++  argaddr(0, &buf);
++  if (copyin(myproc()->pagetable, str, buf, 128) < 0)
++  {
++    return -1;
++  }
++  int count = 0;
++  for (int i = 0; str[i] != '\0'; i++)
++  {
++    unsigned char ch = str[i];
++    if (ch == c)
++    {
++      count++;
++    }
++  }
++  return count;
++}
+diff --git a/user/freq.c b/user/freq.c
+new file mode 100644
+index 0000000..45787dc
+--- /dev/null
++++ b/user/freq.c
+@@ -0,0 +1,15 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[])
++{
++  char buf[128];
++  int i;
++  for (i = 0; i < 511 && argv[1][i]; i++)
++    buf[i] = argv[1][i];
++  buf[i] = '\0';
++  int count = countTargetFreq(buf);
++  printf("Found %d occurrences of target\n", count);
++  exit(0);
++}
+diff --git a/user/target.c b/user/target.c
+new file mode 100644
+index 0000000..af6244c
+--- /dev/null
++++ b/user/target.c
+@@ -0,0 +1,13 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[])
++{
++  setTargetChar((unsigned char)argv[1][0]);
++  char ch[2];
++  ch[0] = argv[1][0];
++  ch[1] = '\0';
++  printf("Target character set to '%s'\n", ch);
++  exit(0);
++}
+diff --git a/user/user.h b/user/user.h
+index f16fe27..8e09810 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -22,6 +22,8 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int setTargetChar(const char);
++int countTargetFreq(const char*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..b66521a 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -14,7 +14,7 @@ sub entry {
+     print " ecall\n";
+     print " ret\n";
+ }
+-	
++
+ entry("fork");
+ entry("exit");
+ entry("wait");
+@@ -36,3 +36,5 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("setTargetChar");
++entry("countTargetFreq");

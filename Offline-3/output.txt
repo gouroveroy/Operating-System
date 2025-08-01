@@ -1,0 +1,124 @@
+Operative 14 has arrived at typewriting station 3 at time 5
+Operative 14 is requesting station 3.
+Operative 14 has acquired station 3.
+Operative 9 has arrived at typewriting station 2 at time 10
+Operative 9 is requesting station 2.
+Operative 9 has acquired station 2.
+Intelligence Staff 2 began reviewing logbook at time 10. Operations completed = 0
+Intelligence Staff 1 began reviewing logbook at time 10. Operations completed = 0
+Intelligence Staff 2 began reviewing logbook at time 21. Operations completed = 0
+Operative 8 has arrived at typewriting station 1 at time 25
+Operative 8 is requesting station 1.
+Operative 8 has acquired station 1.
+Operative 15 has arrived at typewriting station 4 at time 25
+Operative 15 is requesting station 4.
+Operative 15 has acquired station 4.
+Operative 9 has completed document recreation at station 2 at time 31
+Operative 9 has released station 2.
+Operative 9 has finished and notified group leader.
+Operative 14 has completed document recreation at station 3 at time 31
+Operative 14 has released station 3.
+Operative 14 has finished and notified group leader.
+Intelligence Staff 1 began reviewing logbook at time 37. Operations completed = 0
+Intelligence Staff 2 began reviewing logbook at time 42. Operations completed = 0
+Operative 2 has arrived at typewriting station 3 at time 45
+Operative 2 is requesting station 3.
+Operative 2 has acquired station 3.
+Operative 12 has arrived at typewriting station 1 at time 45
+Operative 12 is requesting station 1.
+Operative 12 is waiting for station 1.
+Operative 15 has completed document recreation at station 4 at time 48
+Operative 15 has released station 4.
+Leader Operative 15 is waiting for group members to finish.
+Operative 1 has arrived at typewriting station 2 at time 50
+Operative 1 is requesting station 2.
+Operative 1 has acquired station 2.
+Operative 3 has arrived at typewriting station 4 at time 50
+Operative 3 is requesting station 4.
+Operative 3 has acquired station 4.
+Operative 10 has arrived at typewriting station 3 at time 50
+Operative 10 is requesting station 3.
+Operative 10 is waiting for station 3.
+Operative 8 has completed document recreation at station 1 at time 52
+Operative 8 has released station 1.
+Operative 8 has finished and notified group leader.
+Operative 12 has acquired station 1.
+Operative 4 has arrived at typewriting station 1 at time 55
+Operative 4 is requesting station 1.
+Operative 4 is waiting for station 1.
+Operative 11 has arrived at typewriting station 4 at time 55
+Operative 11 is requesting station 4.
+Operative 11 is waiting for station 4.
+Operative 5 has arrived at typewriting station 2 at time 55
+Operative 5 is requesting station 2.
+Operative 5 is waiting for station 2.
+Operative 3 has completed document recreation at station 4 at time 57
+Intelligence Staff 1 began reviewing logbook at time 57. Operations completed = 0
+Operative 3 has released station 4.
+Operative 3 has finished and notified group leader.
+Operative 11 has acquired station 4.
+Operative 6 has arrived at typewriting station 3 at time 60
+Operative 6 is requesting station 3.
+Operative 6 is waiting for station 3.
+Operative 7 has arrived at typewriting station 4 at time 60
+Operative 7 is requesting station 4.
+Operative 7 is waiting for station 4.
+Operative 13 has arrived at typewriting station 2 at time 60
+Operative 13 is requesting station 2.
+Operative 13 is waiting for station 2.
+Intelligence Staff 2 began reviewing logbook at time 67. Operations completed = 0
+Operative 11 has completed document recreation at station 4 at time 68
+Operative 11 has released station 4.
+Operative 11 has finished and notified group leader.
+Operative 7 has acquired station 4.
+Operative 12 has completed document recreation at station 1 at time 68
+Operative 12 has released station 1.
+Operative 12 has finished and notified group leader.
+Operative 4 has acquired station 1.
+Operative 1 has completed document recreation at station 2 at time 71
+Operative 1 has released station 2.
+Operative 1 has finished and notified group leader.
+Operative 13 is waiting for station 2.
+Operative 2 has completed document recreation at station 3 at time 72
+Operative 5 has acquired station 2.
+Operative 6 has acquired station 3.
+Operative 2 has released station 3.
+Operative 2 has finished and notified group leader.
+Operative 10 is waiting for station 3.
+Intelligence Staff 1 began reviewing logbook at time 77. Operations completed = 0
+Operative 5 has completed document recreation at station 2 at time 78
+Operative 5 has released station 2.
+Leader Operative 5 is waiting for group members to finish.
+Operative 7 has completed document recreation at station 4 at time 79
+Operative 7 has released station 4.
+Operative 7 has finished and notified group leader.
+Operative 13 has acquired station 2.
+Operative 6 has completed document recreation at station 3 at time 83
+Operative 6 has released station 3.
+Operative 6 has finished and notified group leader.
+Operative 10 has acquired station 3.
+Intelligence Staff 2 began reviewing logbook at time 88. Operations completed = 0
+Intelligence Staff 1 began reviewing logbook at time 93. Operations completed = 0
+Intelligence Staff 2 began reviewing logbook at time 93. Operations completed = 0
+Operative 4 has completed document recreation at station 1 at time 95
+Operative 4 has released station 1.
+Operative 4 has finished and notified group leader.
+Leader Operative 5 detected all group members finished.
+Unit 1 has completed document recreation phase at time 96
+Operative 13 has completed document recreation at station 2 at time 100
+Operative 13 has released station 2.
+Operative 13 has finished and notified group leader.
+Leader Operative 15 detected all group members finished.
+Unit 3 has completed document recreation phase at time 101
+Unit 1 has completed intelligence distribution at time 106
+Intelligence Staff 1 began reviewing logbook at time 107. Operations completed = 1
+Operative 10 has completed document recreation at station 3 at time 109
+Operative 10 has released station 3.
+Leader Operative 10 is waiting for group members to finish.
+Leader Operative 10 detected all group members finished.
+Unit 2 has completed document recreation phase at time 111
+Unit 3 has completed intelligence distribution at time 127
+Intelligence Staff 2 began reviewing logbook at time 128. Operations completed = 2
+Intelligence Staff 1 began reviewing logbook at time 128. Operations completed = 2
+Unit 2 has completed intelligence distribution at time 139
+Intelligence Staff 1 began reviewing logbook at time 140. Operations completed = 3

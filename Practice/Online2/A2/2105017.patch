@@ -1,0 +1,202 @@
+diff --git a/Makefile b/Makefile
+index f8c820e..1740b14 100644
+--- a/Makefile
++++ b/Makefile
+@@ -32,7 +32,7 @@ OBJS = \
+ 
+ # riscv64-unknown-elf- or riscv64-linux-gnu-
+ # perhaps in /opt/riscv/bin
+-#TOOLPREFIX = 
++#TOOLPREFIX =
+ 
+ # Try to infer the correct TOOLPREFIX if not set
+ ifndef TOOLPREFIX
+@@ -81,7 +81,7 @@ endif
+ LDFLAGS = -z max-page-size=4096
+ 
+ $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
+-	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS) 
++	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS)
+ 	$(OBJDUMP) -S $K/kernel > $K/kernel.asm
+ 	$(OBJDUMP) -t $K/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $K/kernel.sym
+ 
+@@ -139,13 +139,15 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_seed\
++	$U/_choice\
+ 
+ fs.img: mkfs/mkfs README $(UPROGS)
+ 	mkfs/mkfs fs.img README $(UPROGS)
+ 
+ -include kernel/*.d user/*.d
+ 
+-clean: 
++clean:
+ 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
+ 	*/*.o */*.d */*.asm */*.sym \
+ 	$U/initcode $U/initcode.out $K/kernel fs.img \
+diff --git a/kernel/array.h b/kernel/array.h
+new file mode 100644
+index 0000000..c99c1f5
+--- /dev/null
++++ b/kernel/array.h
+@@ -0,0 +1,5 @@
++struct array
++{
++  int len;       // length of array
++  int array[15]; // array elements
++};
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index ed65409..5470dbe 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -101,6 +101,8 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
++extern uint64 sys_setSeed(void);
++extern uint64 sys_choice(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+@@ -126,6 +128,8 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_setSeed] sys_setSeed,
++[SYS_choice]  sys_choice,
+ };
+ 
+ void
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..ea96994 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,5 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_setSeed 22
++#define SYS_choice 23
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 3b4d5bd..dcd0bd0 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -5,6 +5,9 @@
+ #include "memlayout.h"
+ #include "spinlock.h"
+ #include "proc.h"
++#include "array.h"
++
++int seed;
+ 
+ uint64
+ sys_exit(void)
+@@ -91,3 +94,27 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++
++uint64
++sys_setSeed(void)
++{
++  int s;
++  argint(0, &s);
++  seed = s;
++  return 0;
++}
++
++uint64
++sys_choice(void)
++{
++  uint64 arr;
++  argaddr(0, &arr);
++  struct array a;
++  if (copyin(myproc()->pagetable, (char *)&a, arr, sizeof(struct array)) < 0)
++  {
++    return -1;
++  }
++  seed++;
++  int index = seed % a.len;
++  return a.array[index];
++}
+diff --git a/user/choice.c b/user/choice.c
+new file mode 100644
+index 0000000..1a58686
+--- /dev/null
++++ b/user/choice.c
+@@ -0,0 +1,17 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++#include "kernel/array.h"
++
++int main(int argc, char *argv[])
++{
++  struct array arr;
++  arr.len = atoi(argv[1]);
++  for (int i = 0; i < arr.len; i++)
++  {
++    arr.array[i] = atoi(argv[2 + i]);
++  }
++  int random = choice(&arr);
++  printf("Randomly selected element is %d\n", random);
++  exit(0);
++}
+diff --git a/user/seed.c b/user/seed.c
+new file mode 100644
+index 0000000..f22edf4
+--- /dev/null
++++ b/user/seed.c
+@@ -0,0 +1,11 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[])
++{
++  int seed = atoi(argv[1]);
++  setSeed(seed);
++  printf("The seed has been set to %d\n", seed);
++  exit(0);
++}
+diff --git a/user/user.h b/user/user.h
+index f16fe27..6c420c3 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -1,4 +1,5 @@
+ struct stat;
++struct array;
+ 
+ // system calls
+ int fork(void);
+@@ -22,6 +23,8 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int setSeed(int);
++int choice(struct array*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..bb7c142 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -14,7 +14,7 @@ sub entry {
+     print " ecall\n";
+     print " ret\n";
+ }
+-	
++
+ entry("fork");
+ entry("exit");
+ entry("wait");
+@@ -36,3 +36,5 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("setSeed");
++entry("choice");
